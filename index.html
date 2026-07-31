@@ -231,7 +231,7 @@
   body.dragging iframe { pointer-events: none; }
 
   /* ════════════════════════════════════════════
-     CALCULATOR SIDEBAR — docked right
+     CALCULATOR SIDEBAR — unchanged, docked right
      ════════════════════════════════════════════ */
   .sidebar {
     position: fixed;
@@ -456,8 +456,19 @@
   .copy-tos:hover { background: var(--accent); color: #fff; box-shadow: 0 0 14px rgba(233,69,96,.4); }
   .copy-tos:active { transform: scale(.97); }
   .copy-tos.copied { background: var(--green); border-color: var(--green); color: #0a0e14; }
+  .copy-targets { background: rgba(255,152,0,.12); border-color: #ff9800; color: #ffb74d; }
+  .copy-targets:hover { background: #ff9800; color: #0a0e14; box-shadow: 0 0 14px rgba(255,152,0,.4); }
+  .copy-targets.copied { background: var(--green); border-color: var(--green); color: #0a0e14; }
+  .copy-runner { background: rgba(156,39,176,.12); border-color: #9c27b0; color: #ce93d8; }
+  .copy-runner:hover { background: #9c27b0; color: #fff; box-shadow: 0 0 14px rgba(156,39,176,.4); }
+  .copy-runner.copied { background: var(--green); border-color: var(--green); color: #0a0e14; }
 
-  /* order preview — visible box, works everywhere */
+  .order-hint {
+    flex-shrink: 0; text-align: center; font-size: 10px; letter-spacing: .08em;
+    color: var(--muted); padding: 2px 0 4px; user-select: none; opacity: .85;
+  }
+
+  /* order preview — select-all + copy works on plain HTTP */
   .order-box {
     flex-shrink: 0;
     width: 100%;
@@ -608,7 +619,10 @@
 
     <button class="copy-all" id="copy-all">COPY LADDER</button>
 
-    <button class="copy-tos" id="copy-tos">COPY TOS ORDER</button>
+    <button class="copy-tos" id="copy-entry">COPY ENTRY</button>
+    <button class="copy-tos copy-targets" id="copy-targets">COPY TARGETS</button>
+    <button class="copy-tos copy-runner" id="copy-runner">COPY RUNNER</button>
+    <div class="order-hint">ENTRY→OCO&nbsp;·&nbsp;TARGETS→SEQ&nbsp;·&nbsp;RUNNER→SINGLE</div>
 
     <textarea class="order-box" id="order-box" readonly spellcheck="false" placeholder="order text appears here"></textarea>
 
@@ -758,10 +772,6 @@
     entryTotalEl.value = '$' + r.entryTotal.toFixed(2);
   }
 
-  /* Clipboard helper.
-     On HTTPS (GitHub Pages) navigator.clipboard.writeText is available and
-     writes pure text/plain — ideal for ToS paste. On plain HTTP it's blocked,
-     so we fall back to selecting the visible order box + execCommand. */
   function copyText(text, onDone) {
     function fallback() {
       var ta = document.createElement('textarea');
@@ -837,14 +847,14 @@
 
   /* ════════════════════════════════════════════
      TOS ORDER GENERATOR — clipboard paste format
-     Expiry is always TODAY (0DTE). On HTTPS the
-     clean clipboard API writes pure text/plain;
-     on plain HTTP we fall back to selecting the
-     visible order box + execCommand.
+     Expiry is always TODAY (0DTE). Copy works on
+     plain HTTP via execCommand on a visible box.
      ════════════════════════════════════════════ */
   var strikeEl   = document.getElementById('strike');
   var cpToggle   = document.getElementById('cp-toggle');
-  var copyTosBtn = document.getElementById('copy-tos');
+  var copyEntryBtn   = document.getElementById('copy-entry');
+  var copyTargetsBtn = document.getElementById('copy-targets');
+  var copyRunnerBtn  = document.getElementById('copy-runner');
   var orderBox   = document.getElementById('order-box');
   var currentCP  = 'CALL';
   var MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -868,43 +878,49 @@
     return n % 1 === 0 ? String(n) : String(n);
   }
 
-  function buildTosOrder(r) {
+  function fmtOffset(n) {
+    // .16 not 0.16 — matches ToS clipboard format
+    return n.toFixed(2).replace(/^0/, '');
+  }
+
+  function buildEntryOrder(r) {
     var strike = parseFloat(strikeEl.value);
     if (!isFinite(strike) || strike <= 0) return null;
-
-    // Working ToS paste format (verified):
-    //   SPY 100 (no "(Weeklys)"), plain prices (no BASE offsets),
-    //   @price STP for the stop, TRSTP MARK-0.25, no TRG BY OCO.
-    //   ToS infers the OCO grouping from the "1st trgs 2 OCO" setting.
     var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
-
-    // Andy's 2+1+1 split (for 4 contracts):
-    //   TP1 sells half (2), STOP paired with TP1 (2),
-    //   TP2 sells 1, RUNNER (trail) gets the last 1.
-    var tp1Qty = Math.floor(r.contracts / 2);
-    var tp2Qty = r.contracts >= 3 ? 1 : 0;
-    var runnerQty = r.contracts - tp1Qty - tp2Qty;
-    var stopQty = tp1Qty;
-
-    // Single multiply + round (matches trade-model display) to avoid
-    // floating-point double-rounding drift (e.g. 1.45*0.10 = 0.14499... → 0.14).
-    var tp1  = round2(r.price * 1.10);
     var stop = round2(r.price * 0.90);
-    var tp2  = round2(r.price * 1.12);
-
+    // ENTRY + full protection: -4 stop covers ALL contracts.
     return [
       'BUY +' + r.contracts + ' ' + sym + ' @' + r.price.toFixed(2) + ' LMT',
-      'SELL -' + tp1Qty + ' ' + sym + ' @' + tp1.toFixed(2) + ' LMT',
-      'SELL -' + stopQty + ' ' + sym + ' @' + stop.toFixed(2) + ' STP',
-      'SELL -' + tp2Qty + ' ' + sym + ' @' + tp2.toFixed(2) + ' LMT',
-      'SELL -' + runnerQty + ' ' + sym + ' TRSTP MARK-0.25'
+      'SELL -' + r.contracts + ' ' + sym + ' @' + stop.toFixed(2) + ' STP'
     ].join('\n');
+  }
+
+  function buildTargetsOrder(r) {
+    var strike = parseFloat(strikeEl.value);
+    if (!isFinite(strike) || strike <= 0) return null;
+    var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
+    var half = Math.floor(r.contracts / 2);
+    var tp1 = round2(r.price * 1.10);
+    var tp2 = round2(r.price * 1.12);
+    // TP1 takes half (+10%), TP2 takes one more (+12%). Sequential, not OCO.
+    return [
+      'SELL -' + half + ' ' + sym + ' @' + tp1.toFixed(2) + ' LMT',
+      'SELL -1 ' + sym + ' @' + tp2.toFixed(2) + ' LMT'
+    ].join('\n');
+  }
+
+  function buildRunnerOrder(r) {
+    var strike = parseFloat(strikeEl.value);
+    if (!isFinite(strike) || strike <= 0) return null;
+    var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
+    // Runner trailing stop — no target, rides the move.
+    return 'SELL -1 ' + sym + ' TRSTP MARK-0.25';
   }
 
   function updateOrderBox() {
     var r = calc();
     if (!r) { orderBox.value = ''; return; }
-    var text = buildTosOrder(r);
+    var text = buildEntryOrder(r);
     orderBox.value = text || '';
   }
 
@@ -916,46 +932,37 @@
   // clicking the box selects everything (manual copy fallback)
   orderBox.addEventListener('focus', function () { orderBox.select(); });
 
-  function flashCopied() {
-    copyTosBtn.textContent = 'COPIED ✓';
-    copyTosBtn.classList.add('copied');
-    setTimeout(function () {
-      copyTosBtn.textContent = 'COPY TOS ORDER';
-      copyTosBtn.classList.remove('copied');
-    }, 1500);
-  }
-
-  copyTosBtn.addEventListener('click', function () {
-    var r = calc();
-    if (!r) return;
-    var text = buildTosOrder(r);
-    if (!text) {
-      copyTosBtn.textContent = 'NEED STRIKE';
-      setTimeout(function () { copyTosBtn.textContent = 'COPY TOS ORDER'; }, 1200);
-      return;
-    }
-    orderBox.value = text;
-
-    // HTTPS (GitHub Pages): clean text/plain write. HTTP: visible-box fallback.
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(flashCopied, selectBoxFallback);
-    } else {
-      selectBoxFallback();
-    }
-
-    function selectBoxFallback() {
+  function wireCopyBtn(btn, label, builder) {
+    btn.addEventListener('click', function () {
+      var r = calc();
+      if (!r) return;
+      var text = builder(r);
+      if (!text) {
+        btn.textContent = 'NEED STRIKE';
+        setTimeout(function () { btn.textContent = label; }, 1200);
+        return;
+      }
+      orderBox.value = text;
+      // execCommand works on plain HTTP (no secure context required)
       orderBox.focus();
       orderBox.select();
       var ok = false;
       try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
       if (ok) {
-        flashCopied();
+        btn.textContent = 'COPIED ✓';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = label; btn.classList.remove('copied'); }, 1500);
       } else {
-        copyTosBtn.textContent = 'CTRL+C';
-        setTimeout(function () { copyTosBtn.textContent = 'COPY TOS ORDER'; }, 2000);
+        // last resort: leave it selected so user just hits Ctrl+C
+        btn.textContent = 'CTRL+C';
+        setTimeout(function () { btn.textContent = label; }, 2000);
       }
-    }
-  });
+    });
+  }
+
+  wireCopyBtn(copyEntryBtn,   'COPY ENTRY',   buildEntryOrder);
+  wireCopyBtn(copyTargetsBtn, 'COPY TARGETS', buildTargetsOrder);
+  wireCopyBtn(copyRunnerBtn,  'COPY RUNNER',  buildRunnerOrder);
 
   updateOrderBox();
 })();
