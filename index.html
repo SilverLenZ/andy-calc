@@ -588,16 +588,16 @@
         <span class="lbl">ENTRY</span><span class="val" id="v-entry">--</span><span class="hint">COPY</span>
       </div>
       <div class="rung stop" data-key="stop" title="Click to copy">
-        <span class="lbl">STOP −10%</span><span class="val" id="v-stop">--</span><span class="hint">COPY</span>
+        <span class="lbl">STOP −10% ×2</span><span class="val" id="v-stop">--</span><span class="hint">COPY</span>
       </div>
       <div class="rung tp1" data-key="tp1" title="Click to copy">
-        <span class="lbl">TP1 +10%</span><span class="val" id="v-tp1">--</span><span class="hint">COPY</span>
+        <span class="lbl">TP1 +10% ×2</span><span class="val" id="v-tp1">--</span><span class="hint">COPY</span>
       </div>
       <div class="rung tp2" data-key="tp2" title="Click to copy">
-        <span class="lbl">TP2 +12%</span><span class="val" id="v-tp2">--</span><span class="hint">COPY</span>
+        <span class="lbl">TP2 +12% ×1</span><span class="val" id="v-tp2">--</span><span class="hint">COPY</span>
       </div>
       <div class="rung tp3" data-key="tp3" title="Click to copy">
-        <span class="lbl">TP3 +15%</span><span class="val" id="v-tp3">--</span><span class="hint">COPY</span>
+        <span class="lbl">RUNNER ×1</span><span class="val" id="v-tp3">--</span><span class="hint">TRAIL</span>
       </div>
     </div>
 
@@ -877,16 +877,27 @@
     //   @price STP for the stop, TRSTP MARK-0.25, no TRG BY OCO.
     //   ToS infers the OCO grouping from the "1st trgs 2 OCO" setting.
     var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
-    var off10 = round2(r.price * 0.10);
-    var off12 = round2(r.price * 0.12);
-    var half  = Math.floor(r.contracts / 2);
+
+    // Andy's 2+1+1 split (for 4 contracts):
+    //   TP1 sells half (2), STOP paired with TP1 (2),
+    //   TP2 sells 1, RUNNER (trail) gets the last 1.
+    var tp1Qty = Math.floor(r.contracts / 2);
+    var tp2Qty = r.contracts >= 3 ? 1 : 0;
+    var runnerQty = r.contracts - tp1Qty - tp2Qty;
+    var stopQty = tp1Qty;
+
+    // Single multiply + round (matches trade-model display) to avoid
+    // floating-point double-rounding drift (e.g. 1.45*0.10 = 0.14499... → 0.14).
+    var tp1  = round2(r.price * 1.10);
+    var stop = round2(r.price * 0.90);
+    var tp2  = round2(r.price * 1.12);
 
     return [
       'BUY +' + r.contracts + ' ' + sym + ' @' + r.price.toFixed(2) + ' LMT',
-      'SELL -' + half + ' ' + sym + ' @' + round2(r.price + off10).toFixed(2) + ' LMT',
-      'SELL -' + half + ' ' + sym + ' @' + round2(r.price - off10).toFixed(2) + ' STP',
-      'SELL -' + half + ' ' + sym + ' @' + round2(r.price + off12).toFixed(2) + ' LMT',
-      'SELL -' + half + ' ' + sym + ' TRSTP MARK-0.25'
+      'SELL -' + tp1Qty + ' ' + sym + ' @' + tp1.toFixed(2) + ' LMT',
+      'SELL -' + stopQty + ' ' + sym + ' @' + stop.toFixed(2) + ' STP',
+      'SELL -' + tp2Qty + ' ' + sym + ' @' + tp2.toFixed(2) + ' LMT',
+      'SELL -' + runnerQty + ' ' + sym + ' TRSTP MARK-0.25'
     ].join('\n');
   }
 
