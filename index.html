@@ -617,12 +617,9 @@
       <span class="val" id="v-risk">--</span>
     </div>
 
-    <button class="copy-all" id="copy-all">COPY LADDER</button>
-
-    <button class="copy-tos" id="copy-entry">COPY ENTRY</button>
-    <button class="copy-tos copy-targets" id="copy-targets">COPY TARGETS</button>
-    <button class="copy-tos copy-runner" id="copy-runner">COPY RUNNER</button>
-    <div class="order-hint">ENTRY→OCO&nbsp;·&nbsp;TARGETS→SEQ&nbsp;·&nbsp;RUNNER→SINGLE</div>
+    <button class="copy-tos" id="copy-entry">ENTRY→OCO</button>
+    <button class="copy-tos copy-targets" id="copy-targets">TARGETS→SEQ</button>
+    <button class="copy-tos copy-runner" id="copy-runner">RUNNER→SINGLE</button>
 
     <textarea class="order-box" id="order-box" readonly spellcheck="false" placeholder="order text appears here"></textarea>
 
@@ -720,7 +717,6 @@
   var fillEl = document.getElementById('fill');
   var contractsEl = document.getElementById('contracts');
   var entryTotalEl = document.getElementById('entry-total');
-  var copyAllBtn = document.getElementById('copy-all');
   var rungs = document.querySelectorAll('.rung');
 
   var last = {};
@@ -803,28 +799,6 @@
       var raw = r[rung.getAttribute('data-key')];
       if (raw == null) return;
       copyText(raw.toFixed(2), function () { flashRung(rung); });
-    });
-  });
-
-  copyAllBtn.addEventListener('click', function () {
-    var r = calc();
-    if (!r) return;
-    var text = [
-      'Entry: $' + r.entry.toFixed(2),
-      'Stop: $' + r.stop.toFixed(2),
-      'TP1: $' + r.tp1.toFixed(2),
-      'TP2: $' + r.tp2.toFixed(2),
-      'TP3: $' + r.tp3.toFixed(2),
-      'Contracts: ' + r.contracts
-    ].join('\n');
-    copyText(text, function () {
-      var orig = copyAllBtn.textContent;
-      copyAllBtn.textContent = 'COPIED';
-      copyAllBtn.classList.add('copied');
-      setTimeout(function () {
-        copyAllBtn.textContent = orig;
-        copyAllBtn.classList.remove('copied');
-      }, 1200);
     });
   });
 
