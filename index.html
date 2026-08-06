@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ANDY STATION — SPY 0DTE</title>
-  <link rel="icon" type="image/png" href="favicon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e14' stroke='%23ffe66d' stroke-width='2'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='18' font-weight='bold' fill='%23ffe66d' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="favicon.png">
 <style>
   :root {
     --panel: #11161f;
@@ -232,7 +234,7 @@
   body.dragging iframe { pointer-events: none; }
 
   /* ════════════════════════════════════════════
-     CALCULATOR SIDEBAR — unchanged, docked right
+     CALCULATOR SIDEBAR — docked right
      ════════════════════════════════════════════ */
   .sidebar {
     position: fixed;
@@ -469,7 +471,7 @@
     color: var(--muted); padding: 2px 0 4px; user-select: none; opacity: .85;
   }
 
-  /* order preview — select-all + copy works on plain HTTP */
+  /* order preview — visible box, works everywhere */
   .order-box {
     flex-shrink: 0;
     width: 100%;
@@ -588,6 +590,8 @@
       </div>
     </div>
 
+    <button class="copy-tos" id="copy-bracket">COPY BRACKET</button>
+
     <div class="field readonly">
       <label>ENTRY $</label>
       <input type="text" id="entry-total" readonly tabindex="-1" value="--">
@@ -618,9 +622,7 @@
       <span class="val" id="v-risk">--</span>
     </div>
 
-    <button class="copy-tos" id="copy-entry">ENTRY→OCO</button>
-    <button class="copy-tos copy-targets" id="copy-targets">TARGETS→SEQ</button>
-    <button class="copy-tos copy-runner" id="copy-runner">RUNNER→SINGLE</button>
+    <div class="divider"><span>TOS ORDER</span></div>
 
     <textarea class="order-box" id="order-box" readonly spellcheck="false" placeholder="order text appears here"></textarea>
 
@@ -769,6 +771,10 @@
     entryTotalEl.value = '$' + r.entryTotal.toFixed(2);
   }
 
+  /* Clipboard helper.
+     On HTTPS (GitHub Pages) navigator.clipboard.writeText is available and
+     writes pure text/plain — ideal for ToS paste. On plain HTTP it's blocked,
+     so we fall back to selecting the visible order box + execCommand. */
   function copyText(text, onDone) {
     function fallback() {
       var ta = document.createElement('textarea');
@@ -821,15 +827,15 @@
   render();
 
   /* ════════════════════════════════════════════
-     TOS ORDER GENERATOR — clipboard paste format
-     Expiry is always TODAY (0DTE). Copy works on
-     plain HTTP via execCommand on a visible box.
+     TOS ORDER GENERATOR — v2 7-line 1st Triggers 3 OCO
+     Expiry is always TODAY (0DTE). On HTTPS the
+     clean clipboard API writes pure text/plain;
+     on plain HTTP we fall back to selecting the
+     visible order box + execCommand.
      ════════════════════════════════════════════ */
   var strikeEl   = document.getElementById('strike');
   var cpToggle   = document.getElementById('cp-toggle');
-  var copyEntryBtn   = document.getElementById('copy-entry');
-  var copyTargetsBtn = document.getElementById('copy-targets');
-  var copyRunnerBtn  = document.getElementById('copy-runner');
+  var copyBracketBtn = document.getElementById('copy-bracket');
   var orderBox   = document.getElementById('order-box');
   var currentCP  = 'CALL';
   var MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -853,49 +859,40 @@
     return n % 1 === 0 ? String(n) : String(n);
   }
 
-  function fmtOffset(n) {
-    // .16 not 0.16 — matches ToS clipboard format
-    return n.toFixed(2).replace(/^0/, '');
-  }
-
-  function buildEntryOrder(r) {
+  // v2 Broker Adapter — 7-line 1st Triggers 3 OCO payload
+  function buildBracketOrder(r) {
     var strike = parseFloat(strikeEl.value);
     if (!isFinite(strike) || strike <= 0) return null;
+    if (!r) return null;
+
     var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
-    var stop = round2(r.price * 0.90);
-    // ENTRY + full protection: -4 stop covers ALL contracts.
+    var price = round2(r.price);
+    var stop = round2(price * 0.90);
+    var tp1 = round2(price * 1.10);
+    var tp2 = round2(price * 1.12);
+
+    var tp1Qty = Math.floor(r.contracts / 2);
+    var tp2Qty = r.contracts >= 3 ? 1 : 0;
+    var runnerQty = r.contracts - tp1Qty - tp2Qty;
+
     return [
-      'BUY +' + r.contracts + ' ' + sym + ' @' + r.price.toFixed(2) + ' LMT',
-      'SELL -' + r.contracts + ' ' + sym + ' @' + stop.toFixed(2) + ' STP'
+      'BUY +' + r.contracts + ' ' + sym + ' @' + price.toFixed(2) + ' LMT',
+      '',
+      'SELL -' + tp1Qty + ' ' + sym + ' @' + tp1.toFixed(2) + ' LMT',
+      'SELL -' + tp1Qty + ' ' + sym + ' STP ' + stop.toFixed(2),
+      '',
+      'SELL -' + tp2Qty + ' ' + sym + ' @' + tp2.toFixed(2) + ' LMT',
+      'SELL -' + tp2Qty + ' ' + sym + ' STP ' + stop.toFixed(2),
+      '',
+      'SELL -' + runnerQty + ' ' + sym + ' @9.99 TRSTP MARK-0.25',
+      'SELL -' + runnerQty + ' ' + sym + ' STP ' + stop.toFixed(2)
     ].join('\n');
-  }
-
-  function buildTargetsOrder(r) {
-    var strike = parseFloat(strikeEl.value);
-    if (!isFinite(strike) || strike <= 0) return null;
-    var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
-    var half = Math.floor(r.contracts / 2);
-    var tp1 = round2(r.price * 1.10);
-    var tp2 = round2(r.price * 1.12);
-    // TP1 takes half (+10%), TP2 takes one more (+12%). Sequential, not OCO.
-    return [
-      'SELL -' + half + ' ' + sym + ' @' + tp1.toFixed(2) + ' LMT',
-      'SELL -1 ' + sym + ' @' + tp2.toFixed(2) + ' LMT'
-    ].join('\n');
-  }
-
-  function buildRunnerOrder(r) {
-    var strike = parseFloat(strikeEl.value);
-    if (!isFinite(strike) || strike <= 0) return null;
-    var sym = 'SPY 100 ' + todayStr() + ' ' + fmtStrike(strike) + ' ' + currentCP;
-    // Runner trailing stop — no target, rides the move.
-    return 'SELL -1 ' + sym + ' TRSTP MARK-0.25';
   }
 
   function updateOrderBox() {
     var r = calc();
     if (!r) { orderBox.value = ''; return; }
-    var text = buildEntryOrder(r);
+    var text = buildBracketOrder(r);
     orderBox.value = text || '';
   }
 
@@ -907,37 +904,46 @@
   // clicking the box selects everything (manual copy fallback)
   orderBox.addEventListener('focus', function () { orderBox.select(); });
 
-  function wireCopyBtn(btn, label, builder) {
-    btn.addEventListener('click', function () {
-      var r = calc();
-      if (!r) return;
-      var text = builder(r);
-      if (!text) {
-        btn.textContent = 'NEED STRIKE';
-        setTimeout(function () { btn.textContent = label; }, 1200);
-        return;
-      }
-      orderBox.value = text;
-      // execCommand works on plain HTTP (no secure context required)
+  // COPY BRACKET — single 7-line 1st Triggers 3 OCO payload
+  copyBracketBtn.addEventListener('click', function () {
+    var r = calc();
+    if (!r) return;
+    var text = buildBracketOrder(r);
+    if (!text) {
+      copyBracketBtn.textContent = 'NEED STRIKE';
+      setTimeout(function () { copyBracketBtn.textContent = 'COPY BRACKET'; }, 1200);
+      return;
+    }
+    orderBox.value = text;
+
+    function flashCopied() {
+      copyBracketBtn.textContent = 'COPIED ✓';
+      copyBracketBtn.classList.add('copied');
+      setTimeout(function () {
+        copyBracketBtn.textContent = 'COPY BRACKET';
+        copyBracketBtn.classList.remove('copied');
+      }, 1500);
+    }
+
+    function selectBoxFallback() {
       orderBox.focus();
       orderBox.select();
       var ok = false;
       try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
       if (ok) {
-        btn.textContent = 'COPIED ✓';
-        btn.classList.add('copied');
-        setTimeout(function () { btn.textContent = label; btn.classList.remove('copied'); }, 1500);
+        flashCopied();
       } else {
-        // last resort: leave it selected so user just hits Ctrl+C
-        btn.textContent = 'CTRL+C';
-        setTimeout(function () { btn.textContent = label; }, 2000);
+        copyBracketBtn.textContent = 'CTRL+C';
+        setTimeout(function () { copyBracketBtn.textContent = 'COPY BRACKET'; }, 2000);
       }
-    });
-  }
+    }
 
-  wireCopyBtn(copyEntryBtn,   'COPY ENTRY',   buildEntryOrder);
-  wireCopyBtn(copyTargetsBtn, 'COPY TARGETS', buildTargetsOrder);
-  wireCopyBtn(copyRunnerBtn,  'COPY RUNNER',  buildRunnerOrder);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(flashCopied, selectBoxFallback);
+    } else {
+      selectBoxFallback();
+    }
+  });
 
   updateOrderBox();
 })();
