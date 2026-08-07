@@ -108,16 +108,20 @@
     color: var(--muted);
   }
 
-  .chart-frame { position: relative; flex: 1; min-height: 0; }
-  .chart-frame iframe,
-  .chart-frame .tradingview-widget-container {
+  .chart-frame { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  .chart-frame iframe {
     position: absolute;
     inset: 0;
     width: 100%; height: 100%;
     border: 0;
   }
+  .chart-frame .tradingview-widget-container {
+    width: 100%;
+    height: 100%;
+  }
   .chart-frame .tradingview-widget-container__widget {
-    width: 100%; height: 100%;
+    width: 100%;
+    height: 100%;
   }
 
   /* ── splitters ─────────────────────────────── */
