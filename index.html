@@ -518,10 +518,37 @@
           <span class="role">STRUCTURE &amp; LEVELS</span>
         </div>
         <div class="chart-frame">
-          <iframe
-            src="https://s.tradingview.com/embed-widget/advanced-chart/?locale=en&symbol=AMEX%3ASPY&interval=5&theme=dark&style=1&timezone=America%2FPhoenix&backgroundColor=%230F0F0F&gridColor=rgba(242%2C%20242%2C%20242%2C%200.06)&hide_side_toolbar=true&hide_top_toolbar=false&hide_legend=true&hide_volume=true&withdateranges=false&autosize=true&allow_symbol_change=true&details=false&calendar=false"
-            allowfullscreen allow="fullscreen">
-          </iframe>
+          <!-- SPX -->
+        <div class="chart-panel">
+            <div class="tv-wrap">
+                <div class="tradingview-widget-container">
+                    <div class="tradingview-widget-container__widget"></div>
+
+                    <script src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+                    {
+                      "autosize": true,
+                      "symbol": "FOREXCOM:SPXUSD",
+                      "interval": "240",
+                      "theme": "dark",
+                      "style": "1",
+                      "locale": "en",
+
+                      "hide_top_toolbar": false,
+                      "hide_side_toolbar": false,
+                      "hide_volume": false,
+
+                      "allow_symbol_change": true,
+
+                      "studies": [
+                        "STD;Bollinger_Bands",
+                        "STD;Stochastic_RSI"
+                      ]
+                    }
+                    </script>
+                </div>
+            </div>
+        </div>
+
         </div>
       </div>
 
